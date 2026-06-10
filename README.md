@@ -60,7 +60,12 @@ Then open <http://localhost:8000/physik_wuerfel.html>.
 
 ## Screenshots
 
-![Cube physics simulation](screenshots/demo.png)
+<table>
+  <tr>
+    <td align="center"><img src="screenshots/demo.png"><br><sub>Default view — thousands of balls settling in the cube</sub></td>
+    <td align="center"><img src="screenshots/demo2.png"><br><sub>Shake mode — the whole cube tilts and tumbles the balls</sub></td>
+  </tr>
+</table>
 
 ## Project Status
 
