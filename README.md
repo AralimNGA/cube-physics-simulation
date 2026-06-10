@@ -60,7 +60,7 @@ Then open <http://localhost:8000/physik_wuerfel.html>.
 
 ## Screenshots
 
-_Screenshots coming soon._
+![Cube physics simulation](screenshots/demo.png)
 
 ## Project Status
 
