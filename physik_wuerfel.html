@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Physik-Würfel — Ball-Simulation</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: rgba(20, 24, 34, 0.82);
+    --accent: #4ea1ff;
+    --accent2: #ff5c7a;
+    --text: #e6ecf5;
+    --muted: #8a94a6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+  }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  /* ---- Steuerungs-Panel ---- */
+  #ui {
+    position: fixed; top: 16px; left: 16px;
+    width: 290px;
+    background: var(--panel);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 16px 16px 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+    user-select: none;
+  }
+  #ui h1 {
+    font-size: 15px; margin: 0 0 2px; letter-spacing: .3px;
+  }
+  #ui .sub { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
+
+  .btn {
+    width: 100%; border: none; cursor: pointer;
+    border-radius: 10px; padding: 12px 14px;
+    font-size: 14px; font-weight: 600; color: #fff;
+    background: linear-gradient(135deg, #4ea1ff, #2f7de0);
+    transition: transform .06s ease, filter .15s ease;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: scale(0.98); }
+  .btn.secondary { background: linear-gradient(135deg, #3a4256, #2a3040); margin-top: 8px; }
+  .btn.danger { background: linear-gradient(135deg, #ff5c7a, #e03a5c); margin-top: 8px; }
+
+  .row { display: flex; gap: 8px; margin-top: 8px; }
+  .row .btn { margin-top: 0; }
+
+  /* ---- Modus-Raster ---- */
+  .modegrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .mode {
+    border: 1px solid rgba(255,255,255,0.1); cursor: pointer;
+    background: #232a38; color: var(--text);
+    border-radius: 9px; padding: 9px 6px; font-size: 12px; font-weight: 600;
+    transition: background .12s, border-color .12s, transform .06s;
+  }
+  .mode:hover { background: #2c3546; }
+  .mode:active { transform: scale(0.97); }
+  .mode.active { background: linear-gradient(135deg, #4ea1ff, #2f7de0); border-color: transparent; }
+
+  /* ---- Farb-Legende ---- */
+  .legend { margin-top: 12px; }
+  .legend .bar {
+    height: 10px; border-radius: 5px;
+    background: linear-gradient(90deg, #2b6bff, #2bd6c0, #5fd08a, #ffd24e, #ff5c4e);
+  }
+  .legend .lbl { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+  .field { margin-top: 14px; }
+  .field label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: var(--muted); margin-bottom: 6px;
+  }
+  .field label span:last-child { color: var(--accent); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  .stats {
+    margin-top: 14px; padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    font-size: 12px; line-height: 1.7; color: var(--muted);
+  }
+  .stats b { color: var(--text); font-weight: 600; }
+  .stats .fps-good { color: #5fd08a; }
+  .stats .fps-mid  { color: #ffc34e; }
+  .stats .fps-bad  { color: #ff5c7a; }
+
+  #help {
+    position: fixed; bottom: 16px; left: 16px;
+    background: var(--panel); backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; padding: 12px 14px;
+    font-size: 12px; color: var(--muted); line-height: 1.7;
+    max-width: 290px; user-select: none;
+  }
+  #help b { color: var(--text); }
+  kbd {
+    background: #1c2230; border: 1px solid #2c3548; border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 6px; font-family: inherit;
+    font-size: 11px; color: var(--text);
+  }
+  #loading {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 14px; background: var(--bg); z-index: 50;
+    font-size: 14px; color: var(--muted);
+  }
+  .spinner {
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 3px solid #2a3040; border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<!-- ES-Module-Importe von esm.sh (Three.js + Rapier WASM bundled) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://esm.sh/three@0.160.0",
+    "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <div>Physik-Engine wird geladen…</div>
+  </div>
+
+  <div id="app"></div>
+
+  <div id="ui">
+    <h1>🎲 Physik-Würfel</h1>
+    <div class="sub">Three.js + Rapier3D · echte Kollisionsphysik</div>
+
+    <button id="spawn" class="btn">⬇︎ Bälle spawnen</button>
+
+    <div class="field"><label>Würfel-Modus</label></div>
+    <div id="modes" class="modegrid">
+      <button class="mode active" data-mode="manual">✋ Manuell</button>
+      <button class="mode" data-mode="shake">🫨 Schütteln</button>
+      <button class="mode" data-mode="spin">🌀 Drehen</button>
+      <button class="mode" data-mode="tornado">🌪️ Tornado</button>
+      <button class="mode" data-mode="quake">💥 Erdbeben</button>
+      <button class="mode" data-mode="zerog">🚀 Schwerelos</button>
+      <button class="mode" data-mode="flip">🤸 Überschlag</button>
+      <button class="mode" data-mode="orbit">🔁 Kreisen</button>
+      <button class="mode" data-mode="antigrav">⬆️ Anti-Grav</button>
+      <button class="mode" data-mode="implode">🌟 Implosion</button>
+      <button class="mode" data-mode="wave">🌊 Welle</button>
+    </div>
+
+    <div class="legend">
+      <div class="bar"></div>
+      <div class="lbl"><span>tief</span><span>Farbe = Höhe</span><span>hoch</span></div>
+    </div>
+
+    <button id="reset" class="btn danger">♻︎ Zurücksetzen</button>
+
+    <div class="field">
+      <label>Bälle pro Klick <span id="perClickVal">250</span></label>
+      <input id="perClick" type="range" min="25" max="1500" step="25" value="250" />
+    </div>
+    <div class="field">
+      <label>Ballgröße <span id="sizeVal">0.18</span></label>
+      <input id="size" type="range" min="0.08" max="0.40" step="0.01" value="0.18" />
+    </div>
+    <div class="field">
+      <label>Sprungkraft <span id="restVal">0.45</span></label>
+      <input id="rest" type="range" min="0" max="0.95" step="0.05" value="0.45" />
+    </div>
+
+    <div class="stats">
+      Bälle: <b id="count">0</b> / <b id="max">6000</b><br/>
+      FPS: <b id="fps" class="fps-good">–</b> · Physik: <b id="ptime">–</b> ms
+    </div>
+  </div>
+
+  <div id="help">
+    <b>Würfel bewegen:</b><br/>
+    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> verschieben ·
+    <kbd>R</kbd>/<kbd>F</kbd> hoch/runter<br/>
+    <kbd>Q</kbd>/<kbd>E</kbd> drehen ·
+    <kbd>Leertaste</kbd> = Schütteln<br/>
+    <b>Modi:</b> Buttons links · <b>Manuell</b> = nur Tastatur<br/>
+    <b>Kamera:</b> Maus ziehen · Scrollen = Zoom
+  </div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import RAPIER from 'https://esm.sh/@dimforge/rapier3d-compat@0.14.0';
+
+// ============================================================
+//  Initialisierung
+// ============================================================
+await RAPIER.init();              // WASM laden
+document.getElementById('loading').remove();
+
+const HALF = 5;                   // halbe Innenkante des Würfels
+const WALL = 0.5;                 // halbe Wandstärke (dick → weniger Tunneling)
+const MAX_BALLS = 6000;           // harte Obergrenze (InstancedMesh-Kapazität)
+
+// ---- Three.js Szene ----
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0d12);
+scene.fog = new THREE.Fog(0x0b0d12, 35, 70);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 200);
+camera.position.set(13, 11, 17);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(0, 0, 0);
+
+// ---- Licht ----
+scene.add(new THREE.HemisphereLight(0xbcd4ff, 0x202028, 0.7));
+const key = new THREE.DirectionalLight(0xffffff, 1.6);
+key.position.set(12, 20, 8);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+const s = 12;
+key.shadow.camera.left = -s; key.shadow.camera.right = s;
+key.shadow.camera.top = s;   key.shadow.camera.bottom = -s;
+key.shadow.camera.far = 60;
+scene.add(key);
+
+// ---- Würfel (visuell): transparente Box + leuchtende Kanten ----
+const cubeGroup = new THREE.Group();
+scene.add(cubeGroup);
+
+const glassMat = new THREE.MeshPhysicalMaterial({
+  color: 0x6fb1ff, transparent: true, opacity: 0.07,
+  roughness: 0.1, metalness: 0, transmission: 0.6,
+  side: THREE.DoubleSide, depthWrite: false,
+});
+const boxGeo = new THREE.BoxGeometry(HALF*2, HALF*2, HALF*2);
+cubeGroup.add(new THREE.Mesh(boxGeo, glassMat));
+const edges = new THREE.LineSegments(
+  new THREE.EdgesGeometry(boxGeo),
+  new THREE.LineBasicMaterial({ color: 0x4ea1ff })
+);
+cubeGroup.add(edges);
+
+// Schatten-Boden im Würfel (fängt Schatten der Bälle)
+const floorVis = new THREE.Mesh(
+  new THREE.PlaneGeometry(HALF*2, HALF*2),
+  new THREE.ShadowMaterial({ opacity: 0.28 })
+);
+floorVis.rotation.x = -Math.PI/2;
+floorVis.position.y = -HALF + 0.01;
+floorVis.receiveShadow = true;
+cubeGroup.add(floorVis);
+
+// ============================================================
+//  Physik-Welt
+// ============================================================
+const gravity = { x: 0, y: -20, z: 0 };
+const world = new RAPIER.World(gravity);
+world.integrationParameters.numSolverIterations = 8;
+
+// ---- Würfel als EIN kinematischer Körper mit 6 Wänden ----
+// Kinematisch = wir steuern Position/Rotation; bewegt sich der Würfel,
+// schieben die Wände die dynamischen Bälle physikalisch korrekt.
+const cubeBodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased();
+const cubeBody = world.createRigidBody(cubeBodyDesc);
+
+const T = WALL;                   // halbe Wandstärke
+function wall(hx, hy, hz, x, y, z) {
+  const c = RAPIER.ColliderDesc.cuboid(hx, hy, hz)
+    .setTranslation(x, y, z)
+    .setRestitution(0.3)
+    .setFriction(0.4);
+  world.createCollider(c, cubeBody);
+}
+wall(HALF, T, HALF, 0, -HALF - T, 0);   // Boden
+wall(HALF, T, HALF, 0,  HALF + T, 0);   // Decke
+wall(T, HALF, HALF, -HALF - T, 0, 0);   // links
+wall(T, HALF, HALF,  HALF + T, 0, 0);   // rechts
+wall(HALF, HALF, T, 0, 0, -HALF - T);   // hinten
+wall(HALF, HALF, T, 0, 0,  HALF + T);   // vorne
+
+// ============================================================
+//  Bälle (InstancedMesh + dynamische Rapier-Körper)
+// ============================================================
+let ballRadius = 0.18;
+let restitution = 0.45;
+
+const ballGeo = new THREE.SphereGeometry(1, 14, 10);   // Einheitskugel, via Skalierung dimensioniert
+const ballMat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.1 });
+const balls = new THREE.InstancedMesh(ballGeo, ballMat, MAX_BALLS);
+balls.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+balls.castShadow = true;
+balls.count = 0;
+scene.add(balls);
+
+const bodies = [];                // Rapier-Körper, Index = Instanz-Index
+const dummy = new THREE.Object3D();
+const _col = new THREE.Color();
+// wiederverwendbare Temporärobjekte für das Sicherheitsnetz (keine Allokation pro Ball)
+const _lp = new THREE.Vector3();   // Ballposition im Würfel-Koordinatensystem
+const _wp = new THREE.Vector3();   // korrigierte Weltposition
+const _cp = new THREE.Vector3();   // Würfelzentrum
+const _cq = new THREE.Quaternion();
+const _cqi = new THREE.Quaternion();
+
+function spawnBalls(n) {
+  const free = MAX_BALLS - bodies.length;
+  n = Math.min(n, free);
+  // aktuelle Würfel-Transformation, damit neue Bälle innen erscheinen
+  const ct = cubeBody.translation();
+  for (let i = 0; i < n; i++) {
+    const idx = bodies.length;
+    // zufällige Startposition im oberen Bereich des Würfels
+    const px = ct.x + (Math.random()-0.5) * (HALF*1.6);
+    const py = ct.y + (Math.random()*0.5 + 0.2) * HALF;
+    const pz = ct.z + (Math.random()-0.5) * (HALF*1.6);
+
+    const bd = RAPIER.RigidBodyDesc.dynamic()
+      .setTranslation(px, py, pz)
+      .setLinvel((Math.random()-0.5)*3, -Math.random()*3, (Math.random()-0.5)*3)
+      .setLinearDamping(0.05)
+      .setAngularDamping(0.05)
+      .setCcdEnabled(true);     // Continuous Collision Detection → kein Durchschießen
+    const body = world.createRigidBody(bd);
+    const cd = RAPIER.ColliderDesc.ball(ballRadius)
+      .setRestitution(restitution)
+      .setFriction(0.25)
+      .setDensity(1.0);
+    world.createCollider(cd, body);
+    bodies.push(body);
+    // Farbe wird in der Animationsschleife dynamisch nach Höhe gesetzt
+  }
+  balls.count = bodies.length;
+  updateCount();
+}
+
+function resetAll() {
+  for (const b of bodies) world.removeRigidBody(b);
+  bodies.length = 0;
+  balls.count = 0;
+  updateCount();
+}
+
+// ============================================================
+//  Würfel-Steuerung (Tastatur)
+// ============================================================
+const cubePos = new THREE.Vector3(0, 0, 0);
+let cubeYaw = 0;
+let mode = 'manual';
+let modeStart = 0;
+const keys = {};
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space') { e.preventDefault(); setMode('shake'); }
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+
+function setMode(m) {
+  mode = m;
+  modeStart = clock.elapsedTime;
+  document.querySelectorAll('.mode').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === m));
+}
+
+// ============================================================
+//  UI-Verdrahtung
+// ============================================================
+const $ = id => document.getElementById(id);
+$('max').textContent = MAX_BALLS;
+let perClick = 250;
+
+$('spawn').onclick = () => spawnBalls(perClick);
+$('reset').onclick = resetAll;
+document.querySelectorAll('.mode').forEach(b =>
+  b.onclick = () => setMode(b.dataset.mode));
+
+$('perClick').oninput = e => { perClick = +e.target.value; $('perClickVal').textContent = perClick; };
+$('size').oninput = e => { ballRadius = +e.target.value; $('sizeVal').textContent = ballRadius.toFixed(2); };
+$('rest').oninput = e => { restitution = +e.target.value; $('restVal').textContent = restitution.toFixed(2); };
+
+function updateCount() { $('count').textContent = bodies.length; }
+
+// ============================================================
+//  Animationsschleife
+// ============================================================
+const clock = new THREE.Clock();
+let fpsAccum = 0, fpsFrames = 0, fpsTimer = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  // ---- Manuelle Tastatursteuerung (immer aktiv) ----
+  const moveSpeed = 7 * dt;
+  if (keys['KeyA']) cubePos.x -= moveSpeed;
+  if (keys['KeyD']) cubePos.x += moveSpeed;
+  if (keys['KeyW']) cubePos.z -= moveSpeed;
+  if (keys['KeyS']) cubePos.z += moveSpeed;
+  if (keys['KeyR']) cubePos.y += moveSpeed;
+  if (keys['KeyF']) cubePos.y -= moveSpeed;
+  if (keys['KeyQ']) cubeYaw += 1.6 * dt;
+  if (keys['KeyE']) cubeYaw -= 1.6 * dt;
+
+  // ---- Würfel-Modus auswerten ----
+  const mt = t - modeStart;                 // verstrichene Zeit im Modus
+  const target = cubePos.clone();
+  let rotX = 0, rotY = cubeYaw, rotZ = 0;
+  let gExtraY = 0;                           // zusätzliche Schwerkraft (Basis = -20)
+  let swirl = 0, inward = 0;                 // Wirbel- / Sogkräfte pro Ball
+  let wave = 0;                              // Wellenkraft (auf-/abwärts, wandert durch den Würfel)
+
+  switch (mode) {
+    case 'shake':                           // schnelles Rütteln in alle Richtungen
+      target.x += Math.sin(t * 42) * 1.1;
+      target.y += Math.sin(t * 33) * 0.6;
+      target.z += Math.cos(t * 38) * 1.1;
+      rotX = Math.sin(t * 25) * 0.35;
+      rotZ = Math.cos(t * 22) * 0.35;
+      break;
+    case 'spin':                            // gleichmäßiges Drehen
+      rotY = cubeYaw + mt * 1.4;
+      break;
+    case 'tornado':                         // schnell drehen + Wirbel nach innen, schwache Schwerkraft
+      rotY = cubeYaw + mt * 3.0;
+      swirl = 55; inward = 12; gExtraY = 12;
+      break;
+    case 'quake':                           // heftiges Erdbeben + verstärkte Schwerkraft
+      target.x += (Math.sin(t * 97) + Math.sin(t * 53)) * 0.5;
+      target.y += Math.abs(Math.sin(t * 61)) * 0.5;
+      target.z += (Math.cos(t * 89) + Math.sin(t * 47)) * 0.5;
+      gExtraY = -8;
+      break;
+    case 'zerog':                           // Schwerelosigkeit + sanftes Schweben
+      gExtraY = 20;
+      target.y += Math.sin(t * 0.8) * 0.6;
+      rotY = cubeYaw + mt * 0.3;
+      break;
+    case 'flip':                            // taumelnder Überschlag um mehrere Achsen
+      rotX = mt * 1.6;
+      rotZ = Math.sin(mt * 0.7) * 0.8;
+      break;
+    case 'orbit':                           // Würfel kreist im Raum
+      target.x += Math.cos(mt * 1.2) * 3.5;
+      target.z += Math.sin(mt * 1.2) * 3.5;
+      rotY = cubeYaw + mt * 1.2;
+      break;
+    case 'antigrav':                        // Schwerkraft nach oben
+      gExtraY = 36;
+      rotY = cubeYaw + Math.sin(mt) * 0.2;
+      break;
+    case 'implode':                         // starker Sog zur Mitte (alle Bälle ballen sich)
+      inward = 45; gExtraY = 20;
+      break;
+    case 'wave':                            // wandernde Welle (diagonaler Auf-/Abtrieb)
+      wave = 34;
+      break;
+    // 'manual' → nur Tastatur
+  }
+
+  // ---- Wirbel-/Sog-/Schwerkraft-/Wellenkräfte pro Ball (rechenintensiv) ----
+  if (swirl || inward || gExtraY || wave) {
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      const p = b.translation();
+      const dx = p.x - target.x, dz = p.z - target.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const m = b.mass();
+      let fy = gExtraY;
+      // wandernde Welle: Phase hängt von Position + Zeit ab → Berg/Tal zieht durch
+      if (wave) fy += Math.sin((dx + dz) * 0.85 - t * 4.0) * wave;
+      b.applyImpulse({
+        x: ((-dz / len) * swirl - (dx / len) * inward) * m * dt,
+        y: fy * m * dt,
+        z: (( dx / len) * swirl - (dz / len) * inward) * m * dt
+      }, true);
+    }
+  }
+
+  // kinematische Ziel-Transformation setzen → Rapier leitet Wandgeschwindigkeit ab
+  cubeBody.setNextKinematicTranslation({ x: target.x, y: target.y, z: target.z });
+  const quat = new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX, rotY, rotZ));
+  cubeBody.setNextKinematicRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w });
+
+  // ---- Physik-Schritt ----
+  const p0 = performance.now();
+  world.timestep = dt;
+  world.step();
+  const ptime = performance.now() - p0;
+
+  // ---- visuellen Würfel synchronisieren ----
+  const ct = cubeBody.translation();
+  const cr = cubeBody.rotation();
+  cubeGroup.position.set(ct.x, ct.y, ct.z);
+  cubeGroup.quaternion.set(cr.x, cr.y, cr.z, cr.w);
+
+  // ---- Sicherheitsnetz: Würfel-Transformation (für Einsperren der Bälle) ----
+  _cp.set(ct.x, ct.y, ct.z);
+  _cq.set(cr.x, cr.y, cr.z, cr.w);
+  _cqi.copy(_cq).invert();
+  const esc  = HALF + 0.2;                 // ab hier gilt ein Ball als ausgebrochen
+  const back = HALF - ballRadius - 0.05;   // wird auf diese Innenposition zurückgeholt
+
+  // ---- Bälle synchronisieren (Einsperren + Position + Höhen-Farbe) ----
+  const bottom = cubePos.y - HALF;     // Referenz: Würfelboden
+  const span = HALF * 2;
+  for (let i = 0; i < bodies.length; i++) {
+    const tr = bodies[i].translation();
+    const rot = bodies[i].rotation();
+
+    // Position ins Würfel-Koordinatensystem transformieren und prüfen, ob ausgebrochen
+    _lp.set(tr.x, tr.y, tr.z).sub(_cp).applyQuaternion(_cqi);
+    let fixed = false;
+    if (_lp.x >  esc) { _lp.x =  back; fixed = true; } else if (_lp.x < -esc) { _lp.x = -back; fixed = true; }
+    if (_lp.y >  esc) { _lp.y =  back; fixed = true; } else if (_lp.y < -esc) { _lp.y = -back; fixed = true; }
+    if (_lp.z >  esc) { _lp.z =  back; fixed = true; } else if (_lp.z < -esc) { _lp.z = -back; fixed = true; }
+
+    if (fixed) {
+      // zurück in Weltkoordinaten und Ball dorthin setzen, Tempo dämpfen
+      _wp.copy(_lp).applyQuaternion(_cq).add(_cp);
+      bodies[i].setTranslation({ x: _wp.x, y: _wp.y, z: _wp.z }, true);
+      const v = bodies[i].linvel();
+      bodies[i].setLinvel({ x: v.x * 0.2, y: v.y * 0.2, z: v.z * 0.2 }, true);
+      dummy.position.copy(_wp);
+    } else {
+      dummy.position.set(tr.x, tr.y, tr.z);
+    }
+
+    dummy.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+    dummy.scale.setScalar(ballRadius);
+    dummy.updateMatrix();
+    balls.setMatrixAt(i, dummy.matrix);
+
+    // Höhe → Farbe: unten blau (Farbton 0.66) → oben rot (Farbton 0.0)
+    let h = (dummy.position.y - bottom) / span;
+    h = h < 0 ? 0 : h > 1 ? 1 : h;
+    _col.setHSL(0.66 * (1 - h), 0.85, 0.55);
+    balls.setColorAt(i, _col);
+  }
+  balls.instanceMatrix.needsUpdate = true;
+  if (balls.instanceColor) balls.instanceColor.needsUpdate = true;
+
+  controls.update();
+  renderer.render(scene, camera);
+
+  // ---- FPS / Stats ----
+  fpsFrames++; fpsTimer += dt;
+  if (fpsTimer >= 0.5) {
+    const fps = Math.round(fpsFrames / fpsTimer);
+    const el = $('fps');
+    el.textContent = fps;
+    el.className = fps >= 50 ? 'fps-good' : fps >= 30 ? 'fps-mid' : 'fps-bad';
+    $('ptime').textContent = ptime.toFixed(1);
+    fpsFrames = 0; fpsTimer = 0;
+  }
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// Start mit einer ersten Ladung Bälle
+spawnBalls(250);
+animate();
+</script>
+</body>
+</html>
