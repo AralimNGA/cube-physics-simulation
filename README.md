@@ -62,7 +62,7 @@ Then open <http://localhost:8000/physik_wuerfel.html>.
 
 <table>
   <tr>
-    <td align="center"><img src="screenshots/demo.png"><br><sub>Default view — thousands of balls settling in the cube</sub></td>
+    <td align="center"><img src="screenshots/demo.png"><br><sub>Default view — the first 250 balls settling in the cube</sub></td>
     <td align="center"><img src="screenshots/demo2.png"><br><sub>Shake mode — the whole cube tilts and tumbles the balls</sub></td>
   </tr>
 </table>
