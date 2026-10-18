@@ -70,3 +70,11 @@ Then open <http://localhost:8000/physik_wuerfel.html>.
 ## Project Status
 
 Complete. This is a self-contained portfolio project and a finished, working prototype. There is no backend, build pipeline, or test suite — it is intended to be opened and explored directly.
+
+## How it was made
+
+Built with the help of an AI coding agent (Claude Code).
+
+## License
+
+MIT, see [LICENSE](LICENSE). Three.js (MIT) and Rapier3D (Apache-2.0) are loaded from esm.sh at runtime and are not part of this repository.
